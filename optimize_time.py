@@ -1,4 +1,6 @@
 import json
+import time
+import matplotlib.pyplot as plt
 from web3 import Web3
 
 # Load the ABI from the JSON file
@@ -14,53 +16,43 @@ address = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419'  # ETH/USD price feed add
 # Create contract instance
 contract = w3.eth.contract(address=address, abi=abi)
 
-# Call the latestRoundData function
-latest_data = contract.functions.latestRoundData().call()
-price_data = latest_data[1] / 10**8  # Adjust for decimals
-
-print(f"ETH/USD price: ${price_data}")
-
-def calculate_ama(prices, period, fast_period=2, slow_period=30):
-    er = efficiency_ratio(prices, period)
-    fast_sc = 2 / (fast_period + 1)
-    slow_sc = 2 / (slow_period + 1)
-    sc = er * (fast_sc - slow_sc) + slow_sc
-    ama = [prices[0]]
-    for i in range(1, len(prices)):
-        ama.append(ama[-1] + sc * (prices[i] - ama[-1]))
-    return ama
-
-def efficiency_ratio(prices, period):
-    direction = abs(prices[-1] - prices[-period])
-    volatility = sum(abs(prices[i] - prices[i-1]) for i in range(-1, -period, -1))
-    return direction / volatility if volatility != 0 else 0
-
-def optimize_timeframe(prices, initial_period=14, max_period=200):
-    period = initial_period
-    touches = 0
-    while period <= max_period:
-        ama = calculate_ama(prices, period)
-        new_touches = sum(1 for p, a in zip(prices, ama) if abs(p - a) < 0.0001)
-        if new_touches > touches:
-            touches = new_touches
-            optimal_period = period
-        period += 1
-    return optimal_period
-
-# Assuming you have a function to fetch historical prices
-def fetch_historical_prices(contract, num_prices):
+def fetch_historical_prices(contract, num_days=90, interval_hours=24):
     prices = []
-    for i in range(num_prices):
+    total_intervals = num_days * 24 // interval_hours  # Total number of intervals to fetch
+
+    for i in range(total_intervals):
         # Fetch the latest round data
         latest_data = contract.functions.latestRoundData().call()
         price = latest_data[1] / 10**8  # Adjust for decimals
         prices.append(price)
-        # You may want to add a delay or wait for the next price update
+        
+        # Print the fetched price for debugging
+        print(f"Fetched price {i + 1}/{total_intervals}: {price}")
+
+        # Wait for the specified interval (in seconds)
+        time.sleep(interval_hours * 3600)  # Convert hours to seconds
+
     return prices
 
-# Fetch historical prices (e.g., the last 100 prices)
-historical_prices = fetch_historical_prices(contract, 100)
+# Fetch historical prices for the last 90 days
+historical_prices = fetch_historical_prices(contract, num_days=90, interval_hours=24)
 
-# Now use historical_prices instead of price_data
+# Plotting the historical prices
+plt.figure(figsize=(12, 6))
+plt.plot(historical_prices, label='ETH/USD Price', color='blue')
+plt.title('Historical ETH/USD Prices Over the Last 90 Days')
+plt.xlabel('Time (Days)')
+plt.ylabel('Price (USD)')
+plt.xticks(rotation=45)
+plt.grid()
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Now use historical_prices for further analysis
 optimal_period = optimize_timeframe(historical_prices)
 optimized_mean = calculate_ama(historical_prices, optimal_period)
+
+# Print the results
+print(f"Optimal Period: {optimal_period}")
+print(f"Optimized Mean: {optimized_mean}")
